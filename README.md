@@ -2,6 +2,8 @@
 
 Een weer-app die **Buienradar** en **Open-Meteo** combineert tot één overzicht, met een verwachting tot **16 dagen** vooruit.
 
+**Live versie:** <https://nielshennekam-hub.github.io/weer/> (GitHub Pages, automatisch bijgewerkt bij elke push)
+
 ## Wat zit erin?
 
 | Onderdeel | Bron |
@@ -15,9 +17,16 @@ Een weer-app die **Buienradar** en **Open-Meteo** combineert tot één overzicht
 
 Voor dag 1 t/m 5 worden de temperatuur en neerslagkans van beide bronnen gemiddeld; in het uitklapbare dagdetail zie je de bronnen naast elkaar. Buiten Nederland valt de app automatisch terug op alleen Open-Meteo.
 
-## Starten
+## Twee manieren van draaien
 
-Vereist alleen **Node.js 18+** — geen dependencies, geen build-stap.
+**1. Statisch (zoals op GitHub Pages)** — geen server nodig. De browser haalt de
+bronnen rechtstreeks op (alle API's ondersteunen CORS) en combineert ze
+client-side met `public/combine.js`. De workflow
+`.github/workflows/pages.yml` publiceert de map `public/` automatisch.
+
+**2. Met de eigen Node-server** — vereist alleen **Node.js 18+**, geen
+dependencies of build-stap. Voordeel: server-side cache van 5 minuten, zodat de
+bronnen niet per bezoeker bevraagd worden.
 
 ```bash
 npm start
@@ -25,6 +34,9 @@ npm start
 ```
 
 Open daarna <http://localhost:3000>. Andere poort: `PORT=8080 npm start`.
+
+De frontend detecteert zelf welke modus van toepassing is: hij probeert
+`api/weather` en valt terug op rechtstreeks ophalen als dat geen JSON oplevert.
 
 ## Gebruik
 

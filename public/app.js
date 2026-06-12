@@ -1,7 +1,20 @@
-// WeerMix frontend: haalt gecombineerde data op bij de eigen server en rendert het dashboard.
+// WeerMix frontend: haalt gecombineerde weerdata op en rendert het dashboard.
+// Werkt in twee modi: via de eigen Node-backend (/api/weather) of — op statische
+// hosting zoals GitHub Pages — door de bronnen rechtstreeks te bevragen en
+// client-side te combineren met dezelfde logica (combine.js).
+
+import { combineWeather, searchPlaces, BUIENRADAR_FEED, RAINTEXT_URL, OPEN_METEO_URL } from './combine.js';
 
 const DEFAULT_LOCATION = { name: 'Amsterdam', region: 'Noord-Holland', lat: 52.3676, lon: 4.9041 };
 const REFRESH_MS = 10 * 60_000;
+
+// null = nog onbekend; wordt bepaald bij de eerste fetch en onthouden.
+let hasBackend = { 1: true, 0: false }[localStorage.getItem('weermix-backend')] ?? null;
+
+function rememberBackend(value) {
+  hasBackend = value;
+  localStorage.setItem('weermix-backend', value ? '1' : '0');
+}
 
 // WMO-weercode -> [icoon overdag, icoon 's nachts, Nederlandse omschrijving]
 const WMO = {
@@ -78,6 +91,53 @@ function setLocation(loc) {
 
 // ---------- data laden ----------
 
+// Probeert de eigen backend; zonder backend (statische hosting) halen we de
+// bronnen rechtstreeks op. Geeft { data, offline } terug.
+async function fetchWeatherPayload(lat, lon) {
+  if (hasBackend !== false) {
+    try {
+      const res = await fetch(`api/weather?lat=${lat}&lon=${lon}`);
+      if ((res.headers.get('Content-Type') ?? '').includes('json')) {
+        rememberBackend(true);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+        // De offline-header wordt gezet door de service worker.
+        return { data, offline: res.headers.get('X-Weermix-Offline') === '1' };
+      }
+      rememberBackend(false); // geen JSON (bijv. 404-pagina) -> geen backend
+    } catch (err) {
+      if (hasBackend === true) throw err;
+      rememberBackend(false);
+    }
+  }
+  return fetchWeatherDirect(lat, lon);
+}
+
+async function fetchWeatherDirect(lat, lon) {
+  const [omRes, brRes, rainRes] = await Promise.allSettled([
+    fetch(OPEN_METEO_URL(lat, lon)),
+    fetch(BUIENRADAR_FEED),
+    fetch(RAINTEXT_URL(lat, lon)),
+  ]);
+  if (omRes.status === 'rejected' || !omRes.value.ok) {
+    throw new Error('Open-Meteo is niet bereikbaar. Controleer je internetverbinding.');
+  }
+  const omResponse = omRes.value;
+  const om = await omResponse.json();
+  const br = brRes.status === 'fulfilled' && brRes.value.ok
+    ? await brRes.value.json().catch(() => null)
+    : null;
+  const raintextRaw = rainRes.status === 'fulfilled' && rainRes.value.ok
+    ? await rainRes.value.text().catch(() => null)
+    : null;
+
+  const data = combineWeather({ om, br, raintextRaw, lat, lon });
+  // Offline serveert de service worker opgeslagen antwoorden, met deze headers.
+  const offline = omResponse.headers.get('X-Weermix-Offline') === '1';
+  if (offline) data.fetchedAt = omResponse.headers.get('X-Weermix-Fetched-At') ?? data.fetchedAt;
+  return { data, offline };
+}
+
 async function loadWeather() {
   const status = el('status');
   const content = el('content');
@@ -87,11 +147,8 @@ async function loadWeather() {
   clearTimeout(refreshTimer);
 
   try {
-    const res = await fetch(`/api/weather?lat=${location.lat}&lon=${location.lon}`);
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-    // Gezet door de service worker als dit opgeslagen gegevens zijn (offline).
-    render(data, res.headers.get('X-Weermix-Offline') === '1');
+    const { data, offline } = await fetchWeatherPayload(location.lat, location.lon);
+    render(data, offline);
     status.hidden = true;
     content.hidden = false;
   } catch (err) {
@@ -168,13 +225,13 @@ function renderRain(rain) {
   const card = el('card-rain');
   if (!rain) {
     card.innerHTML = `
-      <h2>Neerslag komende 2 uur <span class="badge">Buienradar</span></h2>
-      <p class="rain-summary">Geen buienverwachting beschikbaar voor deze locatie.</p>
-      <p class="meta" style="color:var(--muted);font-size:.85rem">De buienverwachting van Buienradar dekt alleen Nederland en omgeving.</p>`;
+      <h2>Neerslag komende 2 uur</h2>
+      <p class="rain-summary">Geen buienverwachting beschikbaar voor deze locatie.</p>`;
     return;
   }
+  const badge = rain.source === 'buienradar' ? 'Buienradar' : 'Open-Meteo';
   card.innerHTML = `
-    <h2>Neerslag komende 2 uur <span class="badge">Buienradar</span></h2>
+    <h2>Neerslag komende 2 uur <span class="badge">${badge}</span></h2>
     <p class="rain-summary">${escapeHtml(rain.summary)}</p>
     <div class="rain-chart">${rainChartSvg(rain.points)}</div>`;
 }
@@ -199,8 +256,11 @@ function rainChartSvg(points) {
       <text x="${W - padR}" y="${y(v) - 4}" text-anchor="end">${label}</text>`)
     .join('');
 
+  // Buienradar levert punten per 5 min (±24), Open-Meteo per kwartier (±9):
+  // kies de labelafstand zo dat er altijd ~5 tijdslabels staan.
+  const tickStep = Math.max(1, Math.round((points.length - 1) / 4));
   const ticks = points
-    .map((p, i) => (i % 6 === 0 ? `<text x="${x(i)}" y="${H - 8}" text-anchor="middle">${p.time}</text>` : ''))
+    .map((p, i) => (i % tickStep === 0 ? `<text x="${x(i)}" y="${H - 8}" text-anchor="middle">${p.time}</text>` : ''))
     .join('');
 
   return `
@@ -378,8 +438,12 @@ function setupSearch() {
     if (q.length < 2) return hide();
     debounce = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);
-        show(await res.json());
+        if (hasBackend === true) {
+          const res = await fetch(`api/geocode?q=${encodeURIComponent(q)}`);
+          show(await res.json());
+        } else {
+          show(await searchPlaces(q, (url) => fetch(url).then((r) => r.json())));
+        }
       } catch { hide(); }
     }, 300);
   });
@@ -413,8 +477,9 @@ setupSearch();
 loadWeather();
 
 // PWA: service worker voor offline gebruik; bij terugkerende verbinding direct verversen.
+// Relatief pad, zodat het ook werkt op een subpad zoals https://gebruiker.github.io/weer/.
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js').catch((err) => console.warn('Service worker niet geregistreerd:', err));
+  navigator.serviceWorker.register('sw.js').catch((err) => console.warn('Service worker niet geregistreerd:', err));
   // Bij het eerste bezoek is de service worker pas actief ná de eerste fetch;
   // haal de data dan één keer opnieuw op zodat die ook in de offline-cache belandt.
   let refreshedOnControl = false;
