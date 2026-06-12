@@ -345,6 +345,7 @@ const MIME = {
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.ico': 'image/x-icon',
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
 };
 
 function sendJson(res, status, body) {
@@ -367,7 +368,8 @@ async function serveStatic(res, pathname) {
     const body = await readFile(filePath);
     res.writeHead(200, {
       'Content-Type': MIME[extname(filePath)] ?? 'application/octet-stream',
-      'Cache-Control': 'max-age=300',
+      // De service worker moet snel ververst worden, anders blijven updates hangen.
+      'Cache-Control': filePath.endsWith('sw.js') ? 'no-cache' : 'max-age=300',
     });
     res.end(body);
   } catch {

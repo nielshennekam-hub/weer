@@ -32,6 +32,16 @@ Open daarna <http://localhost:3000>. Andere poort: `PORT=8080 npm start`.
 - Klik op een dag in de 16-daagse lijst voor details en de bronvergelijking.
 - De laatst gekozen locatie wordt onthouden; de data ververst elke 10 minuten.
 
+## PWA: installeren op je telefoon of desktop
+
+WeerMix is een Progressive Web App:
+
+- **Installeerbaar** — in Chrome/Edge via het installatie-icoon in de adresbalk; op iOS via Safari → Deel → "Zet op beginscherm".
+- **Offline** — de app-shell wordt gecachet en zonder verbinding zie je de laatst opgehaalde weergegevens, met een duidelijke offline-melding erbij.
+- Zodra de verbinding terug is, ververst de app automatisch.
+
+Installatie vereist een veilige context: `http://localhost` werkt direct; voor gebruik op je telefoon moet de app via **HTTPS** bereikbaar zijn (bijvoorbeeld achter een reverse proxy of op een gratis Node-host).
+
 ## API
 
 De server biedt twee endpoints die de bronnen combineren (en 5 minuten cachen):

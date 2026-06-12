@@ -90,7 +90,8 @@ async function loadWeather() {
     const res = await fetch(`/api/weather?lat=${location.lat}&lon=${location.lon}`);
     const data = await res.json();
     if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-    render(data);
+    // Gezet door de service worker als dit opgeslagen gegevens zijn (offline).
+    render(data, res.headers.get('X-Weermix-Offline') === '1');
     status.hidden = true;
     content.hidden = false;
   } catch (err) {
@@ -105,22 +106,27 @@ async function loadWeather() {
 
 // ---------- renderen ----------
 
-function render(data) {
-  renderCurrent(data);
+function render(data, offline = false) {
+  renderCurrent(data, offline);
   renderRain(data.rain2h);
   renderHourly(data.hourly);
   renderDaily(data.daily, data.sources);
   renderReport(data.report);
 }
 
-function renderCurrent(data) {
+function renderCurrent(data, offline = false) {
   const c = data.current;
   const fallbackIcon = wmoIcon(c.wmo, c.isDay);
   const icon = c.iconUrl
     ? `<img src="${escapeHtml(c.iconUrl)}" alt="" loading="lazy" onerror="this.outerHTML='${fallbackIcon}'">`
     : fallbackIcon;
   const description = c.description ?? wmoDesc(c.wmo);
-  const updated = new Date(data.fetchedAt).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+  const updated = new Date(data.fetchedAt).toLocaleString('nl-NL', {
+    ...(offline ? { weekday: 'short' } : {}), hour: '2-digit', minute: '2-digit',
+  });
+  const updatedNote = offline
+    ? `⚠️ offline — opgeslagen gegevens van ${updated}`
+    : `bijgewerkt ${updated}`;
 
   const details = [
     ['Gevoelstemperatuur', c.feelsLike != null ? `${nf1.format(c.feelsLike)} °C` : null],
@@ -141,7 +147,7 @@ function renderCurrent(data) {
   el('card-current').innerHTML = `
     <h2>Nu in ${escapeHtml(location.name)}
       <span class="badge">${c.source === 'buienradar' ? 'Buienradar' : 'Open-Meteo'}</span>
-      <span class="meta">bijgewerkt ${updated}</span>
+      <span class="meta">${updatedNote}</span>
     </h2>
     <div class="current-main">
       <div class="current-icon">${icon}</div>
@@ -405,3 +411,17 @@ function setupSearch() {
 
 setupSearch();
 loadWeather();
+
+// PWA: service worker voor offline gebruik; bij terugkerende verbinding direct verversen.
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch((err) => console.warn('Service worker niet geregistreerd:', err));
+  // Bij het eerste bezoek is de service worker pas actief ná de eerste fetch;
+  // haal de data dan één keer opnieuw op zodat die ook in de offline-cache belandt.
+  let refreshedOnControl = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshedOnControl) return;
+    refreshedOnControl = true;
+    loadWeather();
+  });
+}
+window.addEventListener('online', loadWeather);
