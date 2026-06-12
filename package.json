@@ -1,0 +1,14 @@
+{
+  "name": "weermix",
+  "version": "0.1.0",
+  "description": "Weer-app die Buienradar en Open-Meteo combineert: actueel weer, buienverwachting en een 16-daagse verwachting.",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}
