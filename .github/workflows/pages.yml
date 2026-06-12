@@ -1,14 +1,16 @@
 name: Publiceer naar GitHub Pages
 
+# Publiceert de map public/ naar de gh-pages-branch; GitHub Pages serveert
+# die branch. (De "GitHub Actions"-deploymethode kan Pages niet zelf
+# inschakelen met het standaard workflow-token, deze branch-methode wel.)
+
 on:
   push:
     branches: [claude/loving-curie-f2ijdg, main]
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: pages
@@ -17,16 +19,17 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v5
-        with:
-          enablement: true
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: public
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Push public/ naar gh-pages
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          export GIT_INDEX_FILE="$(mktemp)"
+          git read-tree "HEAD:public"
+          EMPTY=$(git hash-object -w /dev/null)
+          git update-index --add --cacheinfo "100644,$EMPTY,.nojekyll"
+          TREE=$(git write-tree)
+          unset GIT_INDEX_FILE
+          COMMIT=$(git commit-tree "$TREE" -m "Pages-deploy van $GITHUB_SHA")
+          git push --force origin "$COMMIT:refs/heads/gh-pages"
