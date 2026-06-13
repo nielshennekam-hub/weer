@@ -8,6 +8,7 @@
   --border: #dde6ee;
   --rain: #2f86e0;
   --rain-fill: rgba(47, 134, 224, 0.22);
+  --prob: #8b5cf6;
   --warm: #e8702a;
   --cold: #3a9bd8;
   --shadow: 0 6px 24px rgba(28, 39, 51, 0.07);
@@ -25,6 +26,7 @@
     --border: #2a3744;
     --rain: #5aa2ee;
     --rain-fill: rgba(90, 162, 238, 0.25);
+    --prob: #b794f6;
     --shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
   }
 }
@@ -203,6 +205,52 @@ main { max-width: 1100px; margin: 0 auto; padding: 8px 16px 32px; }
 .rain-chart text { fill: var(--muted); font-size: 11px; }
 .rain-chart .line { stroke: var(--rain); stroke-width: 2; fill: none; }
 .rain-chart .area { fill: var(--rain-fill); }
+
+/* Schakelaar 2 uur / 24 uur */
+.rain-toggle {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  font-weight: 500;
+}
+.rain-toggle button {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.78rem;
+  padding: 3px 11px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.rain-toggle button.active {
+  background: var(--card);
+  color: var(--accent);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(28, 39, 51, 0.12);
+}
+
+/* 24-uurs meteogram */
+.rain-chart .rain-bar.light { fill: rgba(47, 134, 224, 0.4); }
+.rain-chart .rain-bar.medium { fill: rgba(47, 134, 224, 0.7); }
+.rain-chart .rain-bar.heavy { fill: var(--rain); }
+.rain-chart .rain-prob { fill: none; stroke: var(--prob); stroke-width: 2; stroke-linejoin: round; }
+.rain-chart .rain-night { fill: var(--rain); opacity: 0.06; }
+.rain-chart .rain-midnight { stroke: var(--border); stroke-width: 1; }
+.rain-chart .rain-daylabel { fill: var(--muted); font-size: 10px; text-transform: capitalize; }
+.rain-chart .rain-axis.prob { fill: var(--prob); }
+
+.rain-legend {
+  display: flex;
+  gap: 16px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+.rain-legend i { display: inline-block; vertical-align: middle; margin-right: 4px; }
+.rain-legend .sw-bar { width: 10px; height: 10px; border-radius: 2px; background: var(--rain); }
+.rain-legend .sw-line { width: 14px; height: 0; border-top: 2px solid var(--prob); }
 
 /* ---------- Uurverwachting ---------- */
 

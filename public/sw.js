@@ -2,7 +2,7 @@
 // offline-terugval op de laatst opgehaalde gegevens. Paden zijn relatief zodat
 // dit ook werkt op een subpad (bijv. https://gebruiker.github.io/weer/).
 
-const VERSION = 'v2';
+const VERSION = 'v3';
 const STATIC_CACHE = `weermix-static-${VERSION}`;
 const DATA_CACHE = `weermix-data-${VERSION}`;
 

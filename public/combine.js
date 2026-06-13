@@ -240,6 +240,46 @@ function buildRain2h(raintextRaw, om) {
   return { source: 'open-meteo', summary: rainSummary(omPoints), points: omPoints };
 }
 
+function rain24hSummary(points) {
+  const WET_MM = 0.2, WET_PROB = 40;
+  const isWet = (p) => (p.mm ?? 0) >= WET_MM || (p.prob ?? 0) >= WET_PROB;
+  const hh = (p) => String(p.time).slice(11, 16);
+  const total = points.reduce((s, p) => s + (p.mm ?? 0), 0);
+  const maxMm = Math.max(...points.map((p) => p.mm ?? 0), 0);
+  const hasAmount = total >= 0.1;
+  const totalClause = hasAmount ? ` (totaal ~${total.toFixed(1).replace('.', ',')} mm)` : '';
+  const intensity = maxMm < 1 ? 'lichte' : maxMm < 2.5 ? 'matige' : 'zware';
+
+  const firstWet = points.findIndex(isWet);
+  if (firstWet === -1) return 'De komende 24 uur blijft het vrijwel droog.';
+  if (firstWet === 0) {
+    const firstDry = points.findIndex((p, i) => i > 0 && !isWet(p));
+    if (firstDry === -1) return `Vrijwel onafgebroken kans op neerslag${totalClause}.`;
+    return `Nu kans op neerslag; rond ${hh(points[firstDry])} wordt het droger${totalClause}.`;
+  }
+  if (!hasAmount) {
+    return `Droog tot ${hh(points[firstWet])}, daarna wat kans op een bui (weinig neerslag verwacht).`;
+  }
+  return `Droog tot ${hh(points[firstWet])}, daarna kans op ${intensity} neerslag${totalClause}.`;
+}
+
+// Uurlijkse neerslagverwachting voor de komende 24 uur (Open-Meteo).
+function buildRain24h(om) {
+  const h = om.hourly ?? {};
+  const times = h.time ?? [];
+  const points = [];
+  for (let i = 0; i < Math.min(24, times.length); i++) {
+    points.push({
+      time: times[i],
+      mm: round1(h.precipitation?.[i] ?? 0),
+      prob: h.precipitation_probability?.[i] ?? null,
+      isDay: h.is_day?.[i] ?? 1,
+    });
+  }
+  if (!points.length) return null;
+  return { summary: rain24hSummary(points), points };
+}
+
 function buildReport(br) {
   const rep = br?.Forecast?.WeatherReport;
   if (!rep?.Text && !rep?.Summary) return null;
@@ -262,6 +302,7 @@ export function combineWeather({ om, br, raintextRaw, lat, lon }) {
   const current = buildCurrent(nearest, br, om);
   const daily = buildDaily(om, nearest ? br : null);
   const rain2h = buildRain2h(raintextRaw, om);
+  const rain24h = buildRain24h(om);
 
   return {
     fetchedAt: new Date().toISOString(),
@@ -271,9 +312,11 @@ export function combineWeather({ om, br, raintextRaw, lat, lon }) {
       buienradar: br != null && daily.some((d) => d.buienradar),
       buienradarStation: current.source === 'buienradar',
       rain2h: rain2h != null,
+      rain24h: rain24h != null,
     },
     current,
     rain2h,
+    rain24h,
     hourly: buildHourly(om),
     daily,
     report: nearest ? buildReport(br) : null,

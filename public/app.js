@@ -74,6 +74,8 @@ const dayDate = (dateStr) =>
 
 let location = loadLocation();
 let refreshTimer = null;
+// Gekozen tijdsbereik van de buienverwachting: '2h' (radar) of '24h' (uurlijks).
+let rainRange = localStorage.getItem('weermix-rain-range') ?? '24h';
 
 function loadLocation() {
   try {
@@ -165,7 +167,7 @@ async function loadWeather() {
 
 function render(data, offline = false) {
   renderCurrent(data, offline);
-  renderRain(data.rain2h);
+  renderRain(data.rain2h, data.rain24h);
   renderHourly(data.hourly);
   renderDaily(data.daily, data.sources);
   renderReport(data.report);
@@ -221,19 +223,108 @@ function renderCurrent(data, offline = false) {
     <div class="current-foot">${sourceLine}</div>`;
 }
 
-function renderRain(rain) {
+function renderRain(rain2h, rain24h) {
   const card = el('card-rain');
-  if (!rain) {
+  const has = { '2h': !!rain2h, '24h': !!rain24h };
+  if (!has['2h'] && !has['24h']) {
     card.innerHTML = `
-      <h2>Neerslag komende 2 uur</h2>
+      <h2>Buienverwachting</h2>
       <p class="rain-summary">Geen buienverwachting beschikbaar voor deze locatie.</p>`;
     return;
   }
-  const badge = rain.source === 'buienradar' ? 'Buienradar' : 'Open-Meteo';
-  card.innerHTML = `
-    <h2>Neerslag komende 2 uur <span class="badge">${badge}</span></h2>
-    <p class="rain-summary">${escapeHtml(rain.summary)}</p>
-    <div class="rain-chart">${rainChartSvg(rain.points)}</div>`;
+  if (!has[rainRange]) rainRange = has['24h'] ? '24h' : '2h';
+
+  const draw = () => {
+    const is24 = rainRange === '24h';
+    const rain = is24 ? rain24h : rain2h;
+    const badge = is24 || rain2h.source === 'open-meteo' ? 'Open-Meteo' : 'Buienradar';
+    const tab = (range, label) =>
+      has[range] ? `<button type="button" role="tab" data-range="${range}"
+        class="${rainRange === range ? 'active' : ''}" aria-selected="${rainRange === range}">${label}</button>` : '';
+
+    card.innerHTML = `
+      <h2>Buienverwachting
+        <span class="rain-toggle" role="tablist">${tab('2h', '2 uur')}${tab('24h', '24 uur')}</span>
+        <span class="badge">${badge}</span>
+      </h2>
+      <p class="rain-summary">${escapeHtml(rain.summary)}</p>
+      <div class="rain-chart">${is24 ? rain24hChartSvg(rain.points) : rainChartSvg(rain.points)}</div>
+      ${is24 ? `<div class="rain-legend"><span><i class="sw-bar"></i> neerslag (mm/u)</span><span><i class="sw-line"></i> kans op neerslag</span></div>` : ''}`;
+
+    for (const btn of card.querySelectorAll('.rain-toggle button')) {
+      btn.addEventListener('click', () => {
+        rainRange = btn.dataset.range;
+        localStorage.setItem('weermix-rain-range', rainRange);
+        draw();
+      });
+    }
+  };
+  draw();
+}
+
+// 24-uurs meteogram: staven = neerslag (mm/u, linkeras), lijn = neerslagkans
+// (%, rechteras). Nachturen krijgen een subtiele schaduw; middernacht een lijn.
+function rain24hChartSvg(points) {
+  const W = 660, H = 210, padL = 26, padR = 30, padT = 14, padB = 28;
+  const innerW = W - padL - padR;
+  const innerH = H - padT - padB;
+  const n = points.length;
+  const colW = innerW / n;
+  const maxMm = Math.max(...points.map((p) => p.mm ?? 0), 0);
+  const cap = Math.max(1, Math.ceil(maxMm * 1.25 * 2) / 2);
+  const barW = colW * 0.62;
+  const xCenter = (i) => padL + (i + 0.5) * colW;
+  const yMm = (v) => padT + (1 - Math.min(v, cap) / cap) * innerH;
+  const y0 = yMm(0);
+  const yProb = (v) => padT + (1 - (v ?? 0) / 100) * innerH;
+
+  let night = '';
+  for (let i = 0; i < n; i++) {
+    if (points[i].isDay === 0) {
+      night += `<rect class="rain-night" x="${(padL + i * colW).toFixed(1)}" y="${padT}" width="${colW.toFixed(1)}" height="${innerH}"></rect>`;
+    }
+  }
+
+  let midnights = '';
+  points.forEach((p, i) => {
+    if (String(p.time).slice(11, 16) === '00:00') {
+      const x = padL + i * colW;
+      const label = parseLocalDate(p.time).toLocaleDateString('nl-NL', { weekday: 'short' });
+      midnights += `<line class="rain-midnight" x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${padT}" y2="${y0}"></line>
+        <text class="rain-daylabel" x="${(x + 4).toFixed(1)}" y="${padT + 10}">${label}</text>`;
+    }
+  });
+
+  const bars = points.map((p, i) => {
+    const mm = p.mm ?? 0;
+    if (mm < 0.05) return '';
+    const x = xCenter(i) - barW / 2;
+    const y = yMm(mm);
+    const cls = mm < 1 ? 'light' : mm < 2.5 ? 'medium' : 'heavy';
+    return `<rect class="rain-bar ${cls}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${(y0 - y).toFixed(1)}" rx="1.5"></rect>`;
+  }).join('');
+
+  const probLine = points.map((p, i) => `${xCenter(i).toFixed(1)},${yProb(p.prob).toFixed(1)}`).join(' ');
+
+  const leftAxis = `
+    <text class="rain-axis mm" x="${padL - 4}" y="${y0 + 4}" text-anchor="end">0</text>
+    <text class="rain-axis mm" x="${padL - 4}" y="${yMm(cap) + 9}" text-anchor="end">${nf1.format(cap)}</text>`;
+  const rightAxis = [0, 50, 100]
+    .map((v) => `<text class="rain-axis prob" x="${W - padR + 4}" y="${yProb(v) + 4}">${v}%</text>`)
+    .join('');
+
+  const labels = points
+    .map((p, i) => (i % 3 === 0 ? `<text class="rain-tick" x="${xCenter(i)}" y="${H - 8}" text-anchor="middle">${String(p.time).slice(11, 16)}</text>` : ''))
+    .join('');
+
+  return `
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Neerslag en neerslagkans komende 24 uur">
+      ${night}${midnights}
+      <line class="axis" x1="${padL}" x2="${W - padR}" y1="${y0}" y2="${y0}"></line>
+      ${bars}
+      <polyline class="rain-prob" points="${probLine}"></polyline>
+      ${leftAxis}${rightAxis}${labels}
+    </svg>`;
 }
 
 function rainChartSvg(points) {
