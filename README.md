@@ -9,13 +9,15 @@ Een weer-app die **Buienradar** en **Open-Meteo** combineert tot één overzicht
 | Onderdeel | Bron |
 |---|---|
 | Actueel weer (temperatuur, wind, vochtigheid, luchtdruk, zicht) | Buienradar — dichtstbijzijnd KNMI-meetstation |
-| Neerslag komende 2 uur (per 5 minuten, met grafiek) | Buienradar buienverwachting |
+| Buienverwachting met schakelaar **2 uur** (per 5 min) of **24 uur** (per uur) | 2 u: Buienradar radar · 24 u: Open-Meteo |
 | Weerbericht van de meteoroloog + korte termijn | Buienradar |
 | Uurverwachting komende 48 uur | Open-Meteo |
 | 16-daagse verwachting | Open-Meteo, dag 1–5 **gecombineerd** met de 5-daagse van Buienradar |
 | Plaatsen zoeken (wereldwijd) | Open-Meteo Geocoding |
 
 Voor dag 1 t/m 5 worden de temperatuur en neerslagkans van beide bronnen gemiddeld; in het uitklapbare dagdetail zie je de bronnen naast elkaar. Buiten Nederland valt de app automatisch terug op alleen Open-Meteo.
+
+De buienverwachting heeft een schakelaar: **2 uur** toont de precieze Buienradar-radar (per 5 minuten), **24 uur** toont per uur de verwachte neerslag (mm/u, staven) en de neerslagkans (%, lijn) van Open-Meteo. De keuze wordt onthouden.
 
 ## Twee manieren van draaien
 
